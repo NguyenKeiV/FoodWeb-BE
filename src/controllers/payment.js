@@ -107,8 +107,12 @@ class PaymentController {
         amount: parseInt(totalAmount),
         description: `DH #${orderCode}`,
         items: payosItems,
-        returnUrl: `${process.env.FRONTEND_URL || "http://localhost:5173"}`,
-        cancelUrl: `${process.env.FRONTEND_URL || "http://localhost:5173"}`,
+        returnUrl: `${
+          process.env.FRONTEND_URL || "https://food-web-2k52.vercel.app"
+        }`,
+        cancelUrl: `${
+          process.env.FRONTEND_URL || "https://food-web-2k52.vercel.app"
+        }`,
       });
 
       console.log("✅ Payment link created:", paymentResult.paymentUrl);

@@ -36,7 +36,7 @@ const env = {
   },
 
   CORS: {
-    ORIGIN: process.env.FRONTEND_URL || "http://localhost:3000",
+    ORIGIN: process.env.FRONTEND_URL || "https://food-web-2k52.vercel.app",
     CREDENTIALS: true,
   },
 

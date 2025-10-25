@@ -58,7 +58,6 @@ const startServer = async () => {
       console.log(
         `🔄 Database Sync: ${env.DATABASE.SYNC ? "Enabled" : "Disabled"}`
       );
-      console.log(`📁 Static files: http://localhost:${env.PORT}/uploads`);
     });
   } catch (error) {
     console.error("❌ Failed to start server:", error);
