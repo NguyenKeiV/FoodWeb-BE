@@ -1,27 +1,51 @@
 const express = require("express");
 const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
 const FoodController = require("../controllers/foods");
+const { env } = require("../config/env");
 const router = express.Router();
 
-// Tạo thư mục uploads nếu chưa có
-const uploadDir = path.join(__dirname, "../uploads/foods");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+// ✅ Chọn storage dựa trên environment
+let storage;
+let useCloudinary = false;
+
+if (env.NODE_ENV === "production" && env.CLOUDINARY.CLOUD_NAME) {
+  // ✅ PRODUCTION: Dùng Cloudinary
+  try {
+    const { storage: cloudinaryStorage } = require("../config/cloudinary");
+    storage = cloudinaryStorage;
+    useCloudinary = true;
+    console.log("✅ Using Cloudinary storage for file uploads");
+  } catch (error) {
+    console.error("❌ Cloudinary config error:", error.message);
+    console.error(
+      "⚠️  Falling back to local storage (NOT recommended for production)"
+    );
+  }
 }
 
-// Cấu hình Multer
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    cb(null, "food-" + uniqueSuffix + ext);
-  },
-});
+if (!storage) {
+  // ✅ DEVELOPMENT: Dùng local storage
+  const path = require("path");
+  const fs = require("fs");
+
+  const uploadDir = path.join(__dirname, "../uploads/foods");
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+
+  storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+      cb(null, uploadDir);
+    },
+    filename: function (req, file, cb) {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      const ext = path.extname(file.originalname);
+      cb(null, "food-" + uniqueSuffix + ext);
+    },
+  });
+
+  console.log("⚠️  Using local storage for file uploads");
+}
 
 // File filter
 const fileFilter = (req, file, cb) => {
@@ -34,6 +58,7 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+// Multer config
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
@@ -64,6 +89,12 @@ const handleUploadError = (err, req, res, next) => {
   next();
 };
 
+// ✅ Middleware để attach storage type vào request
+const attachStorageInfo = (req, res, next) => {
+  req.useCloudinary = useCloudinary;
+  next();
+};
+
 // Routes - Thứ tự quan trọng: cụ thể trước, chung sau
 
 // Search foods (phải đặt trước /:id)
@@ -83,6 +114,7 @@ router.post(
   "/",
   upload.single("image"),
   handleUploadError,
+  attachStorageInfo,
   FoodController.createFood
 );
 
@@ -91,6 +123,7 @@ router.put(
   "/:id",
   upload.single("image"),
   handleUploadError,
+  attachStorageInfo,
   FoodController.updateFood
 );
 

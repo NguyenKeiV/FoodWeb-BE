@@ -11,8 +11,20 @@ const app = express();
 
 app.use(
   cors({
-    origin: env.CORS.ORIGIN,
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      const allowedOrigins = Array.isArray(env.CORS.ORIGIN)
+        ? env.CORS.ORIGIN
+        : [env.CORS.ORIGIN];
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: env.CORS.CREDENTIALS,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 app.use(bodyParser.json({ limit: "10mb" }));

@@ -108,12 +108,10 @@ class PaymentController {
         description: `DH #${orderCode}`,
         items: payosItems,
         returnUrl: `${
-          process.env.FRONTEND_URL ||
-          "https://food-web-2k52-4nykkdg62-nguyenkeivs-projects.vercel.app/"
+          process.env.FRONTEND_URL || "https://food-web-2k52.vercel.app"
         }`,
         cancelUrl: `${
-          process.env.FRONTEND_URL ||
-          "https://food-web-2k52-4nykkdg62-nguyenkeivs-projects.vercel.app/"
+          process.env.FRONTEND_URL || "https://food-web-2k52.vercel.app"
         }`,
       });
 

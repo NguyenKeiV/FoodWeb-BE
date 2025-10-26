@@ -3,13 +3,34 @@ const path = require("path");
 const fs = require("fs");
 
 class FoodController {
-  // Helper function để xóa file upload nếu có lỗi
+  // ✅ Helper: Xóa file local (chỉ cho development)
   static deleteUploadedFile(file) {
-    if (file) {
+    if (file && !file.path.startsWith("http")) {
+      // Chỉ xóa file local, không xóa Cloudinary URL
       const filePath = path.join(__dirname, "../uploads/foods", file.filename);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
+    }
+  }
+
+  // ✅ Helper: Xóa ảnh cũ từ Cloudinary
+  static async deleteCloudinaryImage(imageUrl) {
+    try {
+      if (!imageUrl || !imageUrl.includes("cloudinary.com")) return;
+
+      const { cloudinary } = require("../config/cloudinary");
+
+      // Extract public_id từ URL: .../food-images/food-1234567890.jpg
+      const matches = imageUrl.match(/\/([^\/]+)\.(jpg|jpeg|png|webp)$/);
+      if (matches && matches[1]) {
+        const publicId = `food-images/${matches[1]}`;
+        await cloudinary.uploader.destroy(publicId);
+        console.log("✅ Deleted Cloudinary image:", publicId);
+      }
+    } catch (error) {
+      console.error("⚠️  Error deleting Cloudinary image:", error.message);
+      // Không throw error để không block việc update
     }
   }
 
@@ -18,7 +39,6 @@ class FoodController {
     try {
       const { page = 1, limit = 10 } = req.query;
 
-      // Validate pagination parameters
       const pageNum = parseInt(page);
       const limitNum = parseInt(limit);
 
@@ -58,7 +78,6 @@ class FoodController {
     try {
       const { id } = req.params;
 
-      // Validate ID
       const foodId = parseInt(id);
       if (isNaN(foodId)) {
         return res.status(400).json({
@@ -157,11 +176,15 @@ class FoodController {
         });
       }
 
-      // Nếu có upload file ảnh
+      // ✅ Xử lý ảnh upload
       if (req.file) {
-        // Tạo URL để truy cập ảnh
-        const imageUrl = `/uploads/foods/${req.file.filename}`;
-        foodData.img = imageUrl;
+        if (req.useCloudinary) {
+          // ✅ Cloudinary: req.file.path là URL đầy đủ
+          foodData.img = req.file.path;
+        } else {
+          // ✅ Local: tạo relative path
+          foodData.img = `/uploads/foods/${req.file.filename}`;
+        }
       }
 
       const food = await FoodService.createFood(foodData);
@@ -172,7 +195,7 @@ class FoodController {
         data: food.toJSON(),
       });
     } catch (error) {
-      // Nếu có lỗi, xóa file đã upload
+      // Nếu có lỗi, xóa file đã upload (chỉ local)
       FoodController.deleteUploadedFile(req.file);
 
       res.status(400).json({
@@ -188,7 +211,6 @@ class FoodController {
     try {
       const { id } = req.params;
 
-      // Validate ID
       const foodId = parseInt(id);
       if (isNaN(foodId)) {
         FoodController.deleteUploadedFile(req.file);
@@ -200,26 +222,31 @@ class FoodController {
 
       const updateData = { ...req.body };
 
-      // Lấy thông tin food cũ để xóa ảnh cũ nếu cần
+      // Lấy thông tin food cũ
       const oldFood = await FoodService.getFoodById(foodId);
 
-      // Nếu có upload file ảnh mới
+      // ✅ Nếu có upload ảnh mới
       if (req.file) {
-        // Xóa ảnh cũ nếu tồn tại
-        if (oldFood.img) {
-          const oldImagePath = path.join(__dirname, "..", oldFood.img);
-          if (fs.existsSync(oldImagePath)) {
-            try {
-              fs.unlinkSync(oldImagePath);
-            } catch (err) {
-              console.error("Error deleting old image:", err);
+        if (req.useCloudinary) {
+          // ✅ Cloudinary: Xóa ảnh cũ, dùng URL mới
+          if (oldFood.img) {
+            await FoodController.deleteCloudinaryImage(oldFood.img);
+          }
+          updateData.img = req.file.path; // Cloudinary URL
+        } else {
+          // ✅ Local: Xóa file cũ, dùng path mới
+          if (oldFood.img && !oldFood.img.startsWith("http")) {
+            const oldImagePath = path.join(__dirname, "..", oldFood.img);
+            if (fs.existsSync(oldImagePath)) {
+              try {
+                fs.unlinkSync(oldImagePath);
+              } catch (err) {
+                console.error("Error deleting old image:", err);
+              }
             }
           }
+          updateData.img = `/uploads/foods/${req.file.filename}`;
         }
-
-        // Cập nhật đường dẫn ảnh mới
-        const imageUrl = `/uploads/foods/${req.file.filename}`;
-        updateData.img = imageUrl;
       }
 
       const food = await FoodService.updateFood(foodId, updateData);
@@ -230,7 +257,7 @@ class FoodController {
         data: food.toJSON(),
       });
     } catch (error) {
-      // Nếu có lỗi, xóa file mới đã upload
+      // Nếu có lỗi, xóa file mới đã upload (chỉ local)
       FoodController.deleteUploadedFile(req.file);
 
       const statusCode = error.message === "Food not found" ? 404 : 400;
@@ -248,7 +275,6 @@ class FoodController {
       const { id } = req.params;
       const { quantity } = req.body;
 
-      // Validate ID
       const foodId = parseInt(id);
       if (isNaN(foodId)) {
         return res.status(400).json({
@@ -257,7 +283,6 @@ class FoodController {
         });
       }
 
-      // Validate quantity
       if (quantity === undefined || quantity === null) {
         return res.status(400).json({
           success: false,
@@ -287,7 +312,6 @@ class FoodController {
     try {
       const { id } = req.params;
 
-      // Validate ID
       const foodId = parseInt(id);
       if (isNaN(foodId)) {
         return res.status(400).json({
@@ -299,15 +323,20 @@ class FoodController {
       // Lấy thông tin food để xóa ảnh
       const food = await FoodService.getFoodById(foodId);
 
-      // Xóa ảnh nếu tồn tại
+      // ✅ Xóa ảnh
       if (food.img) {
-        const imagePath = path.join(__dirname, "..", food.img);
-        if (fs.existsSync(imagePath)) {
-          try {
-            fs.unlinkSync(imagePath);
-          } catch (err) {
-            console.error("Error deleting image:", err);
-            // Tiếp tục xóa food trong database dù ảnh không xóa được
+        if (food.img.includes("cloudinary.com")) {
+          // ✅ Cloudinary
+          await FoodController.deleteCloudinaryImage(food.img);
+        } else {
+          // ✅ Local
+          const imagePath = path.join(__dirname, "..", food.img);
+          if (fs.existsSync(imagePath)) {
+            try {
+              fs.unlinkSync(imagePath);
+            } catch (err) {
+              console.error("Error deleting image:", err);
+            }
           }
         }
       }
